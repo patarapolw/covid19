@@ -1,0 +1,224 @@
+---
+title: "COVID-19"
+author: "Pacharapol Withayasakpunt"
+date: "9/10/2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+Today is
+
+```{r today}
+Sys.time()
+```
+
+## Loading COVID-19 dataset
+
+```{r loading}
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+set.seed(1234)
+
+filename <- "covid.csv"
+#if (!file.exists(filename)) {
+  download.file("https://covid.ourworldindata.org/data/owid-covid-data.csv", destfile = filename)
+#}
+covid_raw <- read.csv("covid.csv", header = T)
+covid <- covid_raw
+```
+
+## Fix total_cases
+
+```{r fix_total_cases}
+covid$date <- as.Date(covid$date)
+
+covid$total_cases_fixed <- sapply(1:nrow(covid), function (n) {
+  label <- "total_cases"
+  x <- covid[[label]][n]
+  
+  if (is.na(x)) {
+    this_loc <- subset(covid, location == covid$location[n])
+    m <- mean(c(
+      max(0, subset(this_loc, date < covid$date[n])[[label]], na.rm = T),
+      min(max(covid[[label]], na.rm = T), subset(this_loc, date > covid$date[n])[[label]], na.rm = T)
+    ))
+    
+    if (is.na(m)) {
+      return(0)
+    }
+
+    return(m)
+  }
+  
+  return(x)
+})
+
+select(subset(covid, location == "Thailand"), location, date, total_cases, total_cases_fixed)
+```
+
+## Fix total_cases_per_million
+
+```{r fix_total_cases_per_million}
+covid$total_deaths_per_million_fixed <- sapply(1:nrow(covid), function (n) {
+  label <- "total_deaths_per_million"
+  x <- covid[[label]][n]
+  
+  if (is.na(x)) {
+    this_loc <- subset(covid, location == covid$location[n])
+    m <- mean(c(
+      max(0, subset(this_loc, date < covid$date[n])[[label]], na.rm = T),
+      min(max(covid[[label]], na.rm = T), subset(this_loc, date > covid$date[n])[[label]], na.rm = T)
+    ))
+    
+    if (is.na(m)) {
+      return(0)
+    }
+
+    return(m)
+  }
+  
+  return(x)
+})
+
+covid$total_cases_per_million_fixed <- sapply(1:nrow(covid), function (n) {
+  label <- "total_cases_per_million"
+  x <- covid[[label]][n]
+  
+  if (is.na(x)) {
+    this_loc <- subset(covid, location == covid$location[n])
+    m <- mean(c(
+      max(0, subset(this_loc, date < covid$date[n])[[label]], na.rm = T),
+      min(max(covid[[label]], na.rm = T), subset(this_loc, date > covid$date[n])[[label]], na.rm = T)
+    ))
+    
+    if (is.na(m)) {
+      return(0)
+    }
+
+    return(m)
+  }
+  
+  return(x)
+})
+
+select(subset(covid, location == "Thailand"), location, date, total_deaths_per_million, total_deaths_per_million_fixed)
+```
+
+### Max total cases, as of now
+
+```{r max_total_cases}
+distinct_loc <- covid %>% distinct(location, .keep_all = T)
+
+total_cases_lookup <- distinct_loc$total_cases
+names(total_cases_lookup) <- distinct_loc$location
+
+max_total_cases_lookup <- sapply(distinct_loc$location, function (loc) {
+  this_loc <- subset(covid, location == loc)
+  return(max(0, this_loc$total_cases, na.rm = T))
+})
+
+names(max_total_cases_lookup) <- distinct_loc$location
+
+total_cases_per_million_lookup <- distinct_loc$total_cases_per_million
+names(total_cases_per_million_lookup) <- distinct_loc$location
+
+max_total_cases_per_million_lookup <- sapply(distinct_loc$location, function (loc) {
+  this_loc <- subset(covid, location == loc)
+  return(max(0, this_loc$total_cases_per_million, na.rm = T))
+})
+
+names(max_total_cases_per_million_lookup) <- distinct_loc$location
+
+total_deaths_per_million_lookup <- distinct_loc$total_deaths_per_million
+names(total_deaths_per_million_lookup) <- distinct_loc$location
+
+max_total_deaths_per_million_lookup <- sapply(distinct_loc$location, function (loc) {
+  this_loc <- subset(covid, location == loc)
+  return(max(0, this_loc$total_deaths_per_million, na.rm = T))
+})
+
+names(max_total_deaths_per_million_lookup) <- distinct_loc$location
+
+max_total_deaths_per_million_lookup['Thailand']
+```
+
+## Day over 100
+
+```{r day_over_100}
+date_over_100_lookup <- sapply(distinct_loc$location, function (loc) {
+  this_loc <- subset(covid, location == loc & total_cases_fixed >= 100)
+  if (length(this_loc$date) > 0) {
+    return(min(this_loc$date))
+  }
+  
+  return(NA)
+})
+
+covid$day_over_100 <- sapply(1:nrow(covid), function (n) {
+  d <- as.Date(covid$date[n]) - date_over_100_lookup[[covid$location[n]]]
+  if (is.na(d) | d < 0) {
+    return(NA)
+  }
+  
+  return(d)
+})
+
+select(subset(covid, !is.na(day_over_100)), location, date, day_over_100) %>% distinct(location, .keep_all = T)
+```
+
+## Top N's
+
+```{r top_n_total_cases_per_million}
+top_ranks <- data.frame(
+  name = names(max_total_cases_per_million_lookup),
+  max_total_cases = max_total_cases_lookup,
+  max_total_cases_per_million = max_total_cases_per_million_lookup,
+  max_total_deaths_per_million = max_total_deaths_per_million_lookup,
+  nth_cases = length(max_total_cases_per_million_lookup) - rank(max_total_cases_per_million_lookup) + 1,
+  nth_deaths = length(max_total_deaths_per_million_lookup) - rank(max_total_deaths_per_million_lookup) + 1
+) %>% arrange(desc(max_total_cases_per_million))
+
+top_ranks %>% select(max_total_cases_per_million)
+```
+
+```{r top_n_total_deaths_per_million}
+top_ranks %>% arrange(desc(max_total_deaths_per_million)) %>% select(max_total_deaths_per_million)
+```
+
+## Thailand ranks
+
+```{r thailand_ranks}
+subset(
+  top_ranks %>% arrange(desc(max_total_cases)),
+  name %in% (top_ranks %>% arrange(desc(max_total_cases)))$name[2:10] | name == "Thailand"
+) %>% select(nth_cases, nth_deaths, max_total_cases_per_million)
+```
+
+## Top N, and Thailand, since 100th day
+
+```{r plot_new_cases_per_million}
+ggplotly(ggplot(
+  covid %>% subset(!is.na(day_over_100) & new_cases > 0 & (location %in% top_ranks[1:10,]$name | location == "Thailand")),
+  aes(day_over_100, new_cases_per_million, color = location)) 
+  + geom_line() 
+  + scale_y_log10()
+  + labs(
+    title = "New cases per million since day over 100 (highest total cases per miliion)",
+    x = "Day over 100", y = "Number of new cases per million")
+)
+```
+
+```{r plot_new_deaths_per_million}
+ggplotly(ggplot(
+  covid %>% subset(!is.na(day_over_100) & new_cases > 0 & (location %in% top_ranks[1:10,]$name | location == "Thailand")),
+  aes(day_over_100, new_deaths_per_million, color = location)) 
+  + geom_line() 
+  + scale_y_log10()
+  + labs(
+    title = "New deaths per million since day over 100 (highest total cases per miliion)",
+    x = "Day over 100", y = "Number of new cases per million")
+)
+```
