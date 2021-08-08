@@ -34,3 +34,5 @@ Temporary Items
 
 .npmrc
 .Rproj.user
+.env
+node_modules/
